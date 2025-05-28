@@ -1,0 +1,976 @@
+        function saveSvgBlueprint(floor) {
+            const textarea = document.getElementById(`floor${floor}svg`);
+            const svgContent = textarea.value.trim();
+            
+            if (!svgContent) {
+                alert('Please paste the SVG content first!');
+                return;
+            }
+            
+            // Store the SVG content
+            blueprints[floor] = svgContent;
+            
+            // Try to save to localStorage
+            try {
+                localStorage.setItem(`blueprint_floor_${floor}`, svgContent);
+            } catch (e) {
+                console.log('Could not save to localStorage');
+            }
+            
+            // Create a blob URL and set as background if this is the current floor
+            const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+            const blobUrl = URL.createObjectURL(blob);
+            
+            if (currentFloor === floor) {
+                document.getElementById('floorPlan').style.backgroundImage = `url(${blobUrl})`;
+            }
+            
+            alert(`Floor ${floor} blueprint saved successfully!`);
+            
+            // Clear the textarea
+            textarea.value = '';
+            
+            // Update the blueprint selector
+            document.getElementById('blueprintSelect').value = floor;
+            
+            // Hide setup area if both blueprints are loaded
+            if (blueprints[3] && blueprints[4]) {
+                document.getElementById('uploadArea').style.display = 'none';
+            }
+        }<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Floor Plan Office Manager</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f5;
+            overflow-x: auto;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: #2c3e50;
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .controls {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        select, input[type="file"], button {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: white;
+            font-size: 14px;
+        }
+
+        button {
+            background: #3498db;
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #2980b9;
+        }
+
+        .floor-container {
+            position: relative;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+
+        #floorPlan {
+            position: relative;
+            min-height: 800px;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            background-color: #f9f9f9;
+        }
+
+        .room {
+            position: absolute;
+            border: 2px solid #3498db;
+            background: rgba(52, 152, 219, 0.1);
+            cursor: pointer;
+            transition: all 0.3s;
+            min-width: 80px;
+            min-height: 60px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 5px;
+        }
+
+        .room:hover {
+            background: rgba(52, 152, 219, 0.2);
+            border-color: #2980b9;
+            z-index: 10;
+        }
+
+        .room-label {
+            font-weight: bold;
+            font-size: 12px;
+            text-align: center;
+            background: white;
+            padding: 2px 5px;
+            border-radius: 3px;
+            margin-bottom: 5px;
+        }
+
+        .office-tag {
+            position: absolute;
+            background: #fff;
+            border: 2px solid #34495e;
+            border-left-width: 4px;
+            border-radius: 6px;
+            padding: 8px;
+            cursor: move;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: all 0.3s;
+            z-index: 100;
+            min-width: 120px;
+            font-size: 12px;
+            user-select: none;
+        }
+
+        .office-tag:hover {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            transform: translateY(-2px);
+        }
+
+        .office-tag.dragging {
+            opacity: 0.5;
+            z-index: 1000;
+        }
+
+        .office-tag h4 {
+            margin: 0 0 4px 0;
+            font-size: 14px;
+        }
+
+        .office-tag .department {
+            color: #7f8c8d;
+            font-size: 11px;
+        }
+
+        .office-tag .size {
+            color: #95a5a6;
+            font-size: 11px;
+        }
+
+        .room.drag-over {
+            background: rgba(46, 204, 113, 0.3);
+            border-color: #27ae60;
+        }
+
+        .department-science { border-left: 4px solid #e74c3c; }
+        .department-engineering { border-left: 4px solid #3498db; }
+        .department-math { border-left: 4px solid #9b59b6; }
+        .department-business { border-left: 4px solid #f39c12; }
+        .department-humanities { border-left: 4px solid #16a085; }
+
+        .info-panel {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            text-align: center;
+        }
+
+        .stat-card h3 {
+            margin: 0 0 5px 0;
+            color: #2c3e50;
+            font-size: 24px;
+        }
+
+        .stat-card p {
+            margin: 0;
+            color: #7f8c8d;
+            font-size: 14px;
+        }
+
+        .legend {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+        }
+
+        .upload-area {
+            border: 2px dashed #3498db;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            background: #f8f9fa;
+            margin-bottom: 20px;
+        }
+
+        .upload-area.drag-over {
+            background: #e3f2fd;
+            border-color: #2196f3;
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .control-group {
+                flex-direction: column;
+                align-items: stretch;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Academic Building Floor Plan Manager</h1>
+            <p>Drag and drop office assignments to reorganize floor layouts</p>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label for="floorSelect">Select Floor:</label>
+                <select id="floorSelect">
+                    <option value="3">Third Floor</option>
+                    <option value="4">Fourth Floor</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="blueprintSelect">Select Blueprint:</label>
+                <select id="blueprintSelect">
+                    <option value="">Choose a blueprint...</option>
+                    <option value="3">Third Floor Blueprint</option>
+                    <option value="4">Fourth Floor Blueprint</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <label for="blueprintUpload">Upload Blueprint (.txt or image):</label>
+                <input type="file" id="blueprintUpload" accept="image/*,.svg,.txt">
+            </div>
+            
+            <div class="control-group">
+                <label for="excelUpload">Upload Excel Data:</label>
+                <input type="file" id="excelUpload" accept=".xlsx,.xls,.csv">
+            </div>
+            
+            <button onclick="exportLayout()">Export Current Layout</button>
+            <button onclick="resetLayout()">Reset to Original</button>
+            <button onclick="loadSampleData()" style="background: #27ae60;">Load Sample Data</button>
+        </div>
+
+        <div class="upload-area" id="uploadArea">
+            <h3>One-Time Blueprint Setup</h3>
+            <div id="setupWizard">
+                <p><strong>Make your blueprints permanent!</strong></p>
+                <ol>
+                    <li>Upload both blueprint files using the buttons below</li>
+                    <li>Click "Generate Embedded Version"</li>
+                    <li>Save the new HTML file - it will have blueprints built-in!</li>
+                </ol>
+                
+                <div style="margin: 20px 0;">
+                    <button onclick="document.getElementById('embedFloor3').click()" style="background: #3498db;">
+                        Upload Floor 3 Blueprint
+                    </button>
+                    <input type="file" id="embedFloor3" style="display: none;" accept=".txt,.svg">
+                    <span id="floor3status" style="margin-left: 10px;">Not loaded</span>
+                </div>
+                
+                <div style="margin: 20px 0;">
+                    <button onclick="document.getElementById('embedFloor4').click()" style="background: #3498db;">
+                        Upload Floor 4 Blueprint
+                    </button>
+                    <input type="file" id="embedFloor4" style="display: none;" accept=".txt,.svg">
+                    <span id="floor4status" style="margin-left: 10px;">Not loaded</span>
+                </div>
+                
+                <div style="margin: 20px 0;">
+                    <button onclick="generateEmbeddedVersion()" style="background: #27ae60; font-size: 16px; padding: 12px 24px;">
+                        Generate Embedded Version
+                    </button>
+                </div>
+                
+                <div id="embedInstructions" style="display: none; margin-top: 20px; padding: 20px; background: #e8f5e9; border-radius: 8px;">
+                    <h4>Success! Your embedded version is ready!</h4>
+                    <p>A new HTML file has been downloaded. This file has your blueprints permanently embedded.</p>
+                    <p><strong>Use this new file from now on - no more uploading needed!</strong></p>
+                </div>
+            </div>
+        </div>
+
+        <div class="floor-container">
+            <div id="floorPlan"></div>
+        </div>
+
+        <div class="info-panel">
+            <h2>Floor Statistics</h2>
+            <div class="stats">
+                <div class="stat-card">
+                    <h3 id="totalOffices">0</h3>
+                    <p>Total Offices</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="occupiedRooms">0</h3>
+                    <p>Occupied Rooms</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="vacantRooms">0</h3>
+                    <p>Vacant Rooms</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="totalArea">0</h3>
+                    <p>Total Area (sq ft)</p>
+                </div>
+            </div>
+            
+        function updateLegend() {
+            const legendContainer = document.querySelector('.legend');
+            if (!legendContainer) {
+                console.log('Legend container not found yet');
+                return;
+            }
+            
+            legendContainer.innerHTML = '';
+            
+            // Show only departments that are on the current floor
+            const currentFloorDepts = [...new Set(officeData
+                .filter(o => o.floor === currentFloor && o.department !== 'Unassigned')
+                .map(o => o.department))].sort();
+            
+            currentFloorDepts.forEach(dept => {
+                const legendItem = document.createElement('div');
+                legendItem.className = 'legend-item';
+                legendItem.innerHTML = `
+                    <div class="legend-color" style="background: ${departmentColors[dept]};"></div>
+                    <span style="font-size: 12px;">${dept}</span>
+                `;
+                legendContainer.appendChild(legendItem);
+            });
+        }
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script>
+        // Data from Excel file
+        let officeData = [];
+        let departmentColors = {};
+
+        let rooms = [];
+        let currentFloor = 3;
+        let draggedElement = null;
+        let originalData = JSON.parse(JSON.stringify(officeData));
+
+        function updateLegend() {
+            const legendContainer = document.querySelector('.legend');
+            legendContainer.innerHTML = '';
+            
+            // Show only departments that are on the current floor
+            const currentFloorDepts = [...new Set(officeData
+                .filter(o => o.floor === currentFloor && o.department !== 'Unassigned')
+                .map(o => o.department))].sort();
+            
+            currentFloorDepts.forEach(dept => {
+                const legendItem = document.createElement('div');
+                legendItem.className = 'legend-item';
+                legendItem.innerHTML = `
+                    <div class="legend-color" style="background: ${departmentColors[dept]};"></div>
+                    <span style="font-size: 12px;">${dept}</span>
+                `;
+                legendContainer.appendChild(legendItem);
+            });
+        }
+
+        function loadSampleData() {
+            // Sample data based on your Excel structure
+            officeData = [
+                { id: 1, roomId: 3000, roomName: "Lobby", department: "Office for Research", roomSize: 1235, floor: 3 },
+                { id: 2, roomId: 3002, roomName: "Conference Room", department: "Marymount Institute", roomSize: 1048, floor: 3 },
+                { id: 3, roomId: 3003, roomName: "Chapel", department: "Marymount Institute", roomSize: 528, floor: 3 },
+                { id: 4, roomId: 3011, roomName: "Pantry", department: "Marymount Institute", roomSize: 108, floor: 3 },
+                { id: 5, roomId: 4001, roomName: "Office", department: "BCLA Economics", roomSize: 200, floor: 4 },
+                { id: 6, roomId: 4002, roomName: "Office", department: "BCLA History", roomSize: 180, floor: 4 },
+                { id: 7, roomId: 4003, roomName: "Conference Room", department: "BCLA English", roomSize: 350, floor: 4 }
+            ];
+            
+            // Assign colors
+            departmentColors = {
+                "Office for Research": "#e74c3c",
+                "Marymount Institute": "#3498db",
+                "BCLA Economics": "#9b59b6",
+                "BCLA History": "#f39c12",
+                "BCLA English": "#16a085"
+            };
+            
+            originalData = JSON.parse(JSON.stringify(officeData));
+            document.getElementById('uploadArea').style.display = 'none';
+            updateFloorPlan();
+            updateStats();
+            alert('Sample data loaded! You can now see how the tool works.');
+        }
+
+        // Initialize the application
+        function init() {
+            setupEventListeners();
+            updateFloorPlan();
+            updateStats();
+            initializeBlueprints(); // Try to load blueprints automatically
+        }
+
+        function setupEventListeners() {
+            // Floor selection
+            document.getElementById('floorSelect').addEventListener('change', (e) => {
+                currentFloor = parseInt(e.target.value);
+                updateFloorPlan();
+            });
+
+            // Blueprint selection from dropdown
+            document.getElementById('blueprintSelect').addEventListener('change', handleBlueprintSelect);
+
+            // Blueprint upload
+            document.getElementById('blueprintUpload').addEventListener('change', handleBlueprintUpload);
+            
+            // Excel upload
+            document.getElementById('excelUpload').addEventListener('change', handleExcelUpload);
+
+            // Drag and drop for upload area
+            const uploadArea = document.getElementById('uploadArea');
+            uploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadArea.classList.add('drag-over');
+            });
+            
+            uploadArea.addEventListener('dragleave', () => {
+                uploadArea.classList.remove('drag-over');
+            });
+            
+            uploadArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                uploadArea.classList.remove('drag-over');
+                handleFileDrop(e);
+            });
+
+            // Click to add rooms on blueprint
+            document.getElementById('floorPlan').addEventListener('click', handleFloorPlanClick);
+        }
+
+        // Embedded blueprint data (will be filled by the embed generator)
+        const embeddedBlueprints = {
+            3: null, // Will be replaced with actual data
+            4: null  // Will be replaced with actual data
+        };
+
+        // Store blueprints in memory
+        let blueprints = {
+            3: embeddedBlueprints[3],
+            4: embeddedBlueprints[4]
+        };
+
+        // For embedding process
+        let embedData = {
+            3: null,
+            4: null
+        };
+
+        // Setup embed file handlers
+        document.getElementById('embedFloor3')?.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    embedData[3] = event.target.result;
+                    document.getElementById('floor3status').textContent = '✓ Loaded';
+                    document.getElementById('floor3status').style.color = '#27ae60';
+                };
+                reader.readAsText(file);
+            }
+        });
+
+        document.getElementById('embedFloor4')?.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    embedData[4] = event.target.result;
+                    document.getElementById('floor4status').textContent = '✓ Loaded';
+                    document.getElementById('floor4status').style.color = '#27ae60';
+                };
+                reader.readAsText(file);
+            }
+        });
+
+        function generateEmbeddedVersion() {
+            if (!embedData[3] || !embedData[4]) {
+                alert('Please upload both floor blueprints first!');
+                return;
+            }
+
+            // Get the current HTML
+            const currentHTML = document.documentElement.outerHTML;
+            
+            // Replace the embedded blueprint placeholders with actual data
+            const modifiedHTML = currentHTML
+                .replace('3: null, // Will be replaced with actual data', `3: \`${embedData[3].replace(/`/g, '\\`')}\``)
+                .replace('4: null  // Will be replaced with actual data', `4: \`${embedData[4].replace(/`/g, '\\`')}\``)
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .replace(/&amp;/g, '&');
+            
+            // Create a blob and download
+            const blob = new Blob([modifiedHTML], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'floor_planner_with_blueprints.html';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            // Show success message
+            document.getElementById('embedInstructions').style.display = 'block';
+        }
+
+        function handleBlueprintUpload(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const content = event.target.result;
+                    
+                    // Check if it's an SVG/text file or image
+                    if (file.type === 'text/plain' || file.name.endsWith('.txt') || content.includes('<svg')) {
+                        // It's an SVG text file
+                        blueprints[currentFloor] = content;
+                        const blob = new Blob([content], { type: 'image/svg+xml' });
+                        const blobUrl = URL.createObjectURL(blob);
+                        document.getElementById('floorPlan').style.backgroundImage = `url(${blobUrl})`;
+                    } else {
+                        // It's a regular image
+                        document.getElementById('floorPlan').style.backgroundImage = `url(${content})`;
+                    }
+                    
+                    document.getElementById('uploadArea').style.display = 'none';
+                    document.getElementById('blueprintSelect').value = currentFloor;
+                    alert(`Floor ${currentFloor} blueprint loaded successfully!`);
+                };
+                
+                // Read as text for .txt files, as data URL for images
+                if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
+                    reader.readAsText(file);
+                } else {
+                    reader.readAsDataURL(file);
+                }
+            }
+        }
+
+        function handleBlueprintSelect(e) {
+            const selectedFloor = e.target.value;
+            if (!selectedFloor) return;
+            
+            const floorNum = parseInt(selectedFloor);
+            
+            // Update floor selector to match
+            document.getElementById('floorSelect').value = selectedFloor;
+            currentFloor = floorNum;
+            
+            if (blueprints[floorNum]) {
+                // Use stored blueprint
+                const blob = new Blob([blueprints[floorNum]], { type: 'image/svg+xml' });
+                const blobUrl = URL.createObjectURL(blob);
+                document.getElementById('floorPlan').style.backgroundImage = `url(${blobUrl})`;
+                document.getElementById('uploadArea').style.display = 'none';
+            } else {
+                alert(`No blueprint available for Floor ${floorNum}. Please upload your .txt file.`);
+            }
+            
+            updateFloorPlan();
+        }
+
+        // Simplified initialization
+        function initializeBlueprints() {
+            // Check if we have embedded blueprints
+            if (embeddedBlueprints[3] && embeddedBlueprints[4]) {
+                blueprints[3] = embeddedBlueprints[3];
+                blueprints[4] = embeddedBlueprints[4];
+                document.getElementById('uploadArea').style.display = 'none';
+                
+                // Auto-load floor 3 blueprint
+                const blob = new Blob([blueprints[3]], { type: 'image/svg+xml' });
+                const blobUrl = URL.createObjectURL(blob);
+                document.getElementById('floorPlan').style.backgroundImage = `url(${blobUrl})`;
+            }
+        }
+
+        function handleBlueprintUpload(e) {
+            const file = e.target.files[0];
+            if (file && file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    document.getElementById('floorPlan').style.backgroundImage = `url(${event.target.result})`;
+                    document.getElementById('uploadArea').style.display = 'none';
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        async function handleExcelUpload(e) {
+            const file = e.target.files[0];
+            if (file) {
+                // Check if XLSX is loaded
+                if (typeof XLSX === 'undefined') {
+                    alert('Excel reader is still loading. Please try again in a moment.');
+                    return;
+                }
+                
+                try {
+                    const data = await readExcelFile(file);
+                    processExcelData(data);
+                    alert('Success! Loaded ' + officeData.length + ' rooms from floors 3 and 4.');
+                    document.getElementById('uploadArea').style.display = 'none';
+                    updateFloorPlan();
+                    updateStats();
+                } catch (error) {
+                    alert('Error reading Excel file: ' + error.message);
+                    console.error('Excel read error:', error);
+                }
+            }
+        }
+
+        async function readExcelFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        const firstSheetName = workbook.SheetNames[0];
+                        const worksheet = workbook.Sheets[firstSheetName];
+                        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+                        resolve(jsonData);
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+                reader.onerror = reject;
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        function processExcelData(data) {
+            officeData = [];
+            const colorPalette = [
+                '#e74c3c', '#3498db', '#9b59b6', '#f39c12', '#16a085',
+                '#27ae60', '#2c3e50', '#e67e22', '#1abc9c', '#34495e',
+                '#f1c40f', '#8e44ad', '#c0392b', '#d35400', '#7f8c8d'
+            ];
+            let colorIndex = 0;
+            
+            data.forEach((row, index) => {
+                // Convert floor ID to number
+                let floorNum = parseInt(row.FloorID);
+                
+                // Only process floors 3 and 4
+                if (floorNum === 3 || floorNum === 4) {
+                    // Assign colors to departments as we encounter them
+                    if (row.OrgTypeName && !departmentColors[row.OrgTypeName]) {
+                        departmentColors[row.OrgTypeName] = colorPalette[colorIndex % colorPalette.length];
+                        colorIndex++;
+                    }
+                    
+                    officeData.push({
+                        id: index,
+                        roomId: row.RoomID,
+                        roomName: row.RoomName || 'Unnamed',
+                        department: row.OrgTypeName || 'Unassigned',
+                        roomSize: Math.round(row.RoomArea || 0),
+                        floor: floorNum,
+                        remarks: row.Remarks || ''
+                    });
+                }
+            });
+            
+            originalData = JSON.parse(JSON.stringify(officeData));
+            // Remove the updateLegend call from here
+        }
+
+        function handleFileDrop(e) {
+            const files = e.dataTransfer.files;
+            for (let file of files) {
+                if (file.type.startsWith('image/')) {
+                    const input = document.getElementById('blueprintUpload');
+                    input.files = files;
+                    handleBlueprintUpload({ target: input });
+                } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.name.endsWith('.csv')) {
+                    const input = document.getElementById('excelUpload');
+                    input.files = files;
+                    handleExcelUpload({ target: input });
+                }
+            }
+        }
+
+        function handleFloorPlanClick(e) {
+            // Only create rooms if clicking directly on the floor plan, not on tags or rooms
+            if (e.target.id === 'floorPlan') {
+                const rect = e.target.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                const roomNumber = prompt('Enter room number:');
+                if (roomNumber) {
+                    addRoom(x, y, roomNumber);
+                }
+            }
+        }
+
+        function addRoom(x, y, roomNumber) {
+            const room = document.createElement('div');
+            room.className = 'room';
+            room.style.left = x + 'px';
+            room.style.top = y + 'px';
+            room.dataset.roomNumber = roomNumber;
+            
+            const label = document.createElement('div');
+            label.className = 'room-label';
+            label.textContent = roomNumber;
+            room.appendChild(label);
+            
+            // Make room droppable
+            room.addEventListener('dragover', handleDragOver);
+            room.addEventListener('drop', handleDrop);
+            room.addEventListener('dragleave', handleDragLeave);
+            
+            document.getElementById('floorPlan').appendChild(room);
+            rooms.push({ element: room, roomNumber, x, y });
+        }
+
+        function updateFloorPlan() {
+            const floorPlan = document.getElementById('floorPlan');
+            
+            // Clear existing office tags
+            const existingTags = floorPlan.querySelectorAll('.office-tag');
+            existingTags.forEach(tag => tag.remove());
+            
+            // Add office tags for current floor
+            const floorOffices = officeData.filter(office => office.floor === currentFloor);
+            floorOffices.forEach((office, index) => {
+                createOfficeTag(office, index);
+            });
+            
+            // Update the legend for current floor
+            if (officeData.length > 0) {
+                updateLegend();
+            }
+        }
+
+        function createOfficeTag(office, index) {
+            const tag = document.createElement('div');
+            tag.className = 'office-tag';
+            tag.draggable = true;
+            tag.dataset.officeId = office.id;
+            
+            // Apply department color
+            if (office.department && departmentColors[office.department]) {
+                tag.style.borderLeftColor = departmentColors[office.department];
+            }
+            
+            // Position tags in a grid on the left side
+            const col = index % 3;
+            const row = Math.floor(index / 3);
+            tag.style.left = (20 + col * 140) + 'px';
+            tag.style.top = (20 + row * 90) + 'px';
+            
+            tag.innerHTML = `
+                <h4>Room ${office.roomId}</h4>
+                <div class="department" style="font-size: 10px;">${office.department}</div>
+                <div class="room-type">${office.roomName}</div>
+                <div class="size">${office.roomSize} sq ft</div>
+            `;
+            
+            // Add drag event listeners
+            tag.addEventListener('dragstart', handleDragStart);
+            tag.addEventListener('dragend', handleDragEnd);
+            
+            document.getElementById('floorPlan').appendChild(tag);
+        }
+
+        function handleDragStart(e) {
+            draggedElement = e.target.closest('.office-tag');
+            if (draggedElement) {
+                draggedElement.classList.add('dragging');
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/html', ''); // Required for Firefox
+            }
+        }
+
+        function handleDragEnd(e) {
+            if (draggedElement) {
+                draggedElement.classList.remove('dragging');
+                draggedElement = null;
+            }
+            updateStats();
+        }
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.currentTarget.classList.add('drag-over');
+        }
+
+        function handleDragLeave(e) {
+            e.currentTarget.classList.remove('drag-over');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            e.currentTarget.classList.remove('drag-over');
+            
+            if (draggedElement && e.currentTarget.classList.contains('room')) {
+                // Position the tag inside the room
+                const rect = e.currentTarget.getBoundingClientRect();
+                const floorPlanRect = document.getElementById('floorPlan').getBoundingClientRect();
+                
+                draggedElement.style.left = (rect.left - floorPlanRect.left + 5) + 'px';
+                draggedElement.style.top = (rect.top - floorPlanRect.top + 30) + 'px';
+                
+                // Update office data
+                const officeId = parseInt(draggedElement.dataset.officeId);
+                const office = officeData.find(o => o.id === officeId);
+                if (office) {
+                    office.roomNumber = e.currentTarget.dataset.roomNumber;
+                }
+            }
+        }
+
+        function updateStats() {
+            const floorOffices = officeData.filter(office => office.floor === currentFloor);
+            document.getElementById('totalOffices').textContent = floorOffices.length;
+            
+            const occupiedRooms = new Set(floorOffices.map(o => o.roomNumber)).size;
+            document.getElementById('occupiedRooms').textContent = occupiedRooms;
+            
+            const totalRooms = rooms.length;
+            document.getElementById('vacantRooms').textContent = Math.max(0, totalRooms - occupiedRooms);
+            
+            const totalArea = floorOffices.reduce((sum, office) => sum + office.roomSize, 0);
+            document.getElementById('totalArea').textContent = totalArea.toLocaleString();
+        }
+
+        function exportLayout() {
+            const layoutData = {
+                floor: currentFloor,
+                timestamp: new Date().toISOString(),
+                offices: officeData.filter(o => o.floor === currentFloor),
+                rooms: rooms.map(r => ({
+                    roomNumber: r.roomNumber,
+                    x: r.x,
+                    y: r.y
+                }))
+            };
+            
+            const blob = new Blob([JSON.stringify(layoutData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `floor_${currentFloor}_layout_${Date.now()}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function resetLayout() {
+            if (confirm('Are you sure you want to reset to the original layout?')) {
+                officeData = JSON.parse(JSON.stringify(originalData));
+                updateFloorPlan();
+                updateStats();
+            }
+        }
+
+        // Global drag and drop handlers for the floor plan
+        document.addEventListener('dragover', function(e) {
+            if (draggedElement) {
+                e.preventDefault();
+            }
+        });
+        
+        document.addEventListener('drop', function(e) {
+            if (draggedElement && e.target.id === 'floorPlan') {
+                e.preventDefault();
+                const rect = document.getElementById('floorPlan').getBoundingClientRect();
+                draggedElement.style.left = (e.clientX - rect.left - 50) + 'px';
+                draggedElement.style.top = (e.clientY - rect.top - 30) + 'px';
+            }
+        });
+
+        // Initialize the application
+        init();
+    </script>
+</body>
+</html>
